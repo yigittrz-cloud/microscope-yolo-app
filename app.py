@@ -25,8 +25,7 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
 
-    st.subheader("Yüklenen Görüntü")
-    st.image(image, use_container_width=True)
+
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         image.save(tmp.name)
