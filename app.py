@@ -15,7 +15,7 @@ def load_model():
 
 model = load_model()
 
-conf_value = st.slider("Confidence eşiği", 0.05, 0.90, 0.05, 0.05))
+conf_value = st.slider("Confidence eşiği", 0.05, 0.90, 0.05, 0.05)
 
 uploaded_file = st.file_uploader(
     "Mikroskop fotoğrafı yükle",
