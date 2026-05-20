@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="Mikroskop YOLO Analizi", layout="centered")
 
 st.title("Mikroskop Görüntü Analizi")
-st.write("Fotoğraf yükle, model hücreleri tespit edip sayım sonucunu versin.")
+
 
 @st.cache_resource
 def load_model():
