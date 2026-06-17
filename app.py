@@ -26,7 +26,7 @@ def load_model():
 
 try:
     model = load_model()
-except Exception as e:
+except Exception:
     st.error("Model yüklenemedi. best.pt dosyasının app.py ile aynı klasörde olduğundan emin ol.")
     st.stop()
 
@@ -34,12 +34,15 @@ except Exception as e:
 # --------------------------------------------------
 # FONKSİYONLAR
 # --------------------------------------------------
-def bakteri_say(image_np, conf_value):
+def bakteri_say_ve_isaretle(image_np, conf_value):
     results = model(image_np, conf=conf_value)
 
     bakteri_sayisi = 0
+    annotated_image = image_np.copy()
 
     for result in results:
+        annotated_image = result.plot()
+
         if result.boxes is None:
             continue
 
@@ -50,7 +53,7 @@ def bakteri_say(image_np, conf_value):
             if "bakteri" in class_name:
                 bakteri_sayisi += 1
 
-    return bakteri_sayisi
+    return bakteri_sayisi, annotated_image
 
 
 def breed_tpc_hesapla(
@@ -66,7 +69,6 @@ def breed_tpc_hesapla(
         * seyreltme_carpani
         / damlatilan_hacim_ml
     )
-
     return tpc_ml
 
 
@@ -90,7 +92,7 @@ def seyreltme_carpani_bul(seyreltme_secimi):
 
 
 # --------------------------------------------------
-# KISA AYARLAR
+# AYARLAR
 # --------------------------------------------------
 with st.expander("Ayarlar"):
     conf_value = st.slider(
@@ -158,18 +160,30 @@ if uploaded_files:
 
     toplam_bakteri = 0
     goruntu_sayisi = len(uploaded_files)
+    isaretli_gorseller = []
+    tekil_sayimlar = []
 
     with st.spinner("Görüntüler analiz ediliyor..."):
         for uploaded_file in uploaded_files:
             image = Image.open(uploaded_file).convert("RGB")
             image_np = np.array(image)
 
-            bakteri_sayisi = bakteri_say(
+            bakteri_sayisi, annotated_image = bakteri_say_ve_isaretle(
                 image_np=image_np,
                 conf_value=conf_value
             )
 
             toplam_bakteri += bakteri_sayisi
+            tekil_sayimlar.append(bakteri_sayisi)
+
+            isaretli_gorseller.append(
+                {
+                    "dosya_adi": uploaded_file.name,
+                    "orijinal": image,
+                    "isaretli": annotated_image,
+                    "bakteri_sayisi": bakteri_sayisi
+                }
+            )
 
     ortalama_bakteri = toplam_bakteri / goruntu_sayisi
 
@@ -183,17 +197,30 @@ if uploaded_files:
 
     st.success("Analiz tamamlandı.")
 
-    st.metric(
-        label="Tahmini Breed TPC",
-        value=f"{tpc_sonuc:.2e} TPC/mL"
-    )
+    tab1, tab2 = st.tabs(["Sonuç", "İşaretlemeler"])
 
-    st.write(f"Yaklaşık sonuç: **{tpc_sonuc:,.0f} TPC/mL**")
+    with tab1:
+        st.metric(
+            label="Tahmini Breed TPC",
+            value=f"{tpc_sonuc:.2e} TPC/mL"
+        )
 
-    with st.expander("Kısa özet"):
-        st.write(f"Yüklenen görüntü sayısı: **{goruntu_sayisi}**")
-        st.write(f"Toplam bakteri sayısı: **{toplam_bakteri}**")
-        st.write(f"Ortalama bakteri/görüntü: **{ortalama_bakteri:.2f}**")
+        st.write(f"Yaklaşık sonuç: **{tpc_sonuc:,.0f} TPC/mL**")
+
+        with st.expander("Kısa özet"):
+            st.write(f"Yüklenen görüntü sayısı: **{goruntu_sayisi}**")
+            st.write(f"Toplam bakteri sayısı: **{toplam_bakteri}**")
+            st.write(f"Ortalama bakteri/görüntü: **{ortalama_bakteri:.2f}**")
+
+    with tab2:
+        for i, gorsel in enumerate(isaretli_gorseller, start=1):
+            st.subheader(f"Görüntü {i}: {gorsel['dosya_adi']}")
+            st.image(
+                gorsel["isaretli"],
+                caption=f"Bakteri sayısı: {gorsel['bakteri_sayisi']}",
+                use_container_width=True
+            )
+            st.divider()
 
 else:
     st.warning("Analiz için mikroskop görüntüsü yükle.")
