@@ -14,7 +14,10 @@ st.set_page_config(
 )
 
 st.title("Mikroskop Görüntü Analizi")
-st.write("Çoklu görüntü yükleyerek bakteri, maya ve spor sayımı yapar. Bakteri ortalamasından Breed TPC/mL hesaplar.")
+st.write(
+    "Çoklu mikroskop görüntüsü yükleyerek bakteri, maya ve spor sayımı yapar. "
+    "Bakteri ortalamasından Breed formülüne göre tahmini TPC/mL hesaplar."
+)
 
 
 # --------------------------------------------------
@@ -25,19 +28,37 @@ def load_model():
     return YOLO("best.pt")
 
 
-model = load_model()
+try:
+    model = load_model()
+except Exception as e:
+    st.error("Model yüklenemedi. best.pt dosyasının app.py ile aynı klasörde olduğundan emin ol.")
+    st.exception(e)
+    st.stop()
 
 
 # --------------------------------------------------
 # YARDIMCI FONKSİYONLAR
 # --------------------------------------------------
 def sayim_yap(image_np, conf_value):
+    """
+    YOLO sonucundan bakteri, maya ve spor sayısı hesaplar.
+    Sınıf adında 'bakteri', 'maya' veya 'spor' kelimesi geçmesi yeterlidir.
+    Örnek:
+    bakteri
+    bakteri_x
+    bakteri-1
+    maya
+    spor
+    """
+
     results = model(image_np, conf=conf_value)
 
     bakteri_sayisi = 0
     maya_sayisi = 0
     spor_sayisi = 0
     annotated_image = None
+
+    tespit_edilen_siniflar = []
 
     for result in results:
         annotated_image = result.plot()
@@ -49,14 +70,16 @@ def sayim_yap(image_np, conf_value):
             class_id = int(box.cls[0])
             class_name = model.names[class_id].lower().strip()
 
-            if class_name == "bakteri":
+            tespit_edilen_siniflar.append(class_name)
+
+            if "bakteri" in class_name:
                 bakteri_sayisi += 1
-            elif class_name == "maya":
+            elif "maya" in class_name:
                 maya_sayisi += 1
-            elif class_name == "spor":
+            elif "spor" in class_name:
                 spor_sayisi += 1
 
-    return bakteri_sayisi, maya_sayisi, spor_sayisi, annotated_image
+    return bakteri_sayisi, maya_sayisi, spor_sayisi, annotated_image, tespit_edilen_siniflar
 
 
 def breed_tpc_hesapla(
@@ -66,6 +89,23 @@ def breed_tpc_hesapla(
     damlatilan_hacim_ml,
     seyreltme_carpani
 ):
+    """
+    Breed TPC hesabı.
+
+    Formül:
+    TPC/mL =
+    Ortalama bakteri sayısı
+    × Yayma alanı / Tek görüntü alanı
+    × Seyreltme çarpanı
+    / Damlatılan hacim
+    """
+
+    if tek_goruntu_alani_mm2 <= 0:
+        return None
+
+    if damlatilan_hacim_ml <= 0:
+        return None
+
     tpc_ml = (
         ortalama_bakteri
         * (yayma_alani_mm2 / tek_goruntu_alani_mm2)
@@ -76,10 +116,29 @@ def breed_tpc_hesapla(
     return tpc_ml
 
 
+def seyreltme_carpani_bul(seyreltme_secimi):
+    if seyreltme_secimi == "Seyreltme yok":
+        return 1
+    elif seyreltme_secimi == "10^-1":
+        return 10
+    elif seyreltme_secimi == "10^-2":
+        return 100
+    elif seyreltme_secimi == "10^-3":
+        return 1000
+    elif seyreltme_secimi == "10^-4":
+        return 10000
+    elif seyreltme_secimi == "10^-5":
+        return 100000
+    elif seyreltme_secimi == "10^-6":
+        return 1000000
+    else:
+        return 1
+
+
 # --------------------------------------------------
-# AYARLAR
+# SIDEBAR AYARLARI
 # --------------------------------------------------
-st.sidebar.header("Analiz Ayarları")
+st.sidebar.header("YOLO Ayarları")
 
 conf_value = st.sidebar.slider(
     "Confidence eşiği",
@@ -124,42 +183,37 @@ seyreltme_secimi = st.sidebar.selectbox(
         "10^-3",
         "10^-4",
         "10^-5",
+        "10^-6",
         "Manuel"
     ]
 )
 
-if seyreltme_secimi == "Seyreltme yok":
-    seyreltme_carpani = 1
-elif seyreltme_secimi == "10^-1":
-    seyreltme_carpani = 10
-elif seyreltme_secimi == "10^-2":
-    seyreltme_carpani = 100
-elif seyreltme_secimi == "10^-3":
-    seyreltme_carpani = 1000
-elif seyreltme_secimi == "10^-4":
-    seyreltme_carpani = 10000
-elif seyreltme_secimi == "10^-5":
-    seyreltme_carpani = 100000
-else:
+if seyreltme_secimi == "Manuel":
     seyreltme_carpani = st.sidebar.number_input(
         "Manuel seyreltme çarpanı",
         min_value=1,
         value=1,
         step=1
     )
+else:
+    seyreltme_carpani = seyreltme_carpani_bul(seyreltme_secimi)
+
+
+debug_modu = st.sidebar.checkbox(
+    "Tespit edilen sınıf isimlerini göster",
+    value=False
+)
 
 
 # --------------------------------------------------
 # FORMÜL BİLGİSİ
 # --------------------------------------------------
-with st.expander("Breed formülü"):
+with st.expander("Kullanılan Breed formülü"):
     st.write(
         """
-        Kullanılan formül:
-
         **TPC/mL = Ortalama bakteri sayısı × (Yayma alanı / Tek görüntü alanı) × Seyreltme çarpanı / Damlatılan hacim**
 
-        Örneğin 3 fotoğraf yüklersen:
+        Örnek:
 
         - Foto 1: 40 bakteri
         - Foto 2: 55 bakteri
@@ -169,7 +223,9 @@ with st.expander("Breed formülü"):
 
         **(40 + 55 + 35) / 3 = 43,3**
 
-        Formüle bu ortalama değer yazılır.
+        Bu ortalama değer formüle yazılır.
+
+        Bu durumda formülde **tek görüntü alanı** kullanılır.
         """
     )
 
@@ -185,7 +241,7 @@ uploaded_files = st.file_uploader(
 
 
 # --------------------------------------------------
-# ANALİZ
+# ANA ANALİZ
 # --------------------------------------------------
 if uploaded_files:
 
@@ -197,19 +253,23 @@ if uploaded_files:
     toplam_maya = 0
     toplam_spor = 0
 
+    tum_tespit_edilen_siniflar = []
+
     for i, uploaded_file in enumerate(uploaded_files, start=1):
 
         image = Image.open(uploaded_file).convert("RGB")
         image_np = np.array(image)
 
-        bakteri_sayisi, maya_sayisi, spor_sayisi, annotated_image = sayim_yap(
-            image_np,
-            conf_value
+        bakteri_sayisi, maya_sayisi, spor_sayisi, annotated_image, tespit_edilen_siniflar = sayim_yap(
+            image_np=image_np,
+            conf_value=conf_value
         )
 
         toplam_bakteri += bakteri_sayisi
         toplam_maya += maya_sayisi
         toplam_spor += spor_sayisi
+
+        tum_tespit_edilen_siniflar.extend(tespit_edilen_siniflar)
 
         sonuc_listesi.append(
             {
@@ -230,15 +290,26 @@ if uploaded_files:
 
         with col2:
             st.write("YOLO sonucu")
-            st.image(annotated_image, use_container_width=True)
+            if annotated_image is not None:
+                st.image(annotated_image, use_container_width=True)
+            else:
+                st.warning("Bu görüntüde YOLO sonucu oluşmadı.")
 
         c1, c2, c3 = st.columns(3)
+
         c1.metric("Bakteri", bakteri_sayisi)
         c2.metric("Maya", maya_sayisi)
         c3.metric("Spor", spor_sayisi)
 
+        if debug_modu:
+            st.write("Bu görüntüde tespit edilen sınıflar:")
+            st.write(tespit_edilen_siniflar)
+
         st.divider()
 
+    # --------------------------------------------------
+    # ORTALAMA HESAPLAMA
+    # --------------------------------------------------
     goruntu_sayisi = len(uploaded_files)
 
     ortalama_bakteri = toplam_bakteri / goruntu_sayisi
@@ -264,6 +335,7 @@ if uploaded_files:
     st.subheader("Toplam Sayımlar")
 
     t1, t2, t3 = st.columns(3)
+
     t1.metric("Toplam bakteri", toplam_bakteri)
     t2.metric("Toplam maya", toplam_maya)
     t3.metric("Toplam spor", toplam_spor)
@@ -271,22 +343,49 @@ if uploaded_files:
     st.subheader("Ortalama Sayımlar")
 
     o1, o2, o3 = st.columns(3)
+
     o1.metric("Ortalama bakteri / görüntü", f"{ortalama_bakteri:.2f}")
     o2.metric("Ortalama maya / görüntü", f"{ortalama_maya:.2f}")
     o3.metric("Ortalama spor / görüntü", f"{ortalama_spor:.2f}")
 
     st.subheader("Breed TPC Sonucu")
 
-    st.metric(
-        "Tahmini Breed TPC",
-        f"{tpc_sonuc:.2e} TPC/mL"
-    )
+    if tpc_sonuc is not None:
+        st.metric(
+            "Tahmini Breed TPC",
+            f"{tpc_sonuc:.2e} TPC/mL"
+        )
 
-    st.write(f"Yaklaşık sonuç: **{tpc_sonuc:,.0f} TPC/mL**")
+        st.write(f"Yaklaşık sonuç: **{tpc_sonuc:,.0f} TPC/mL**")
+
+        st.write("Hesapta kullanılan değerler:")
+
+        hesap_df = pd.DataFrame(
+            [
+                {
+                    "Ortalama bakteri/görüntü": ortalama_bakteri,
+                    "Tek görüntü alanı mm²": tek_goruntu_alani_mm2,
+                    "Breed yayma alanı mm²": yayma_alani_mm2,
+                    "Damlatılan hacim mL": damlatilan_hacim_ml,
+                    "Seyreltme çarpanı": seyreltme_carpani,
+                    "Tahmini TPC/mL": tpc_sonuc
+                }
+            ]
+        )
+
+        st.dataframe(hesap_df, use_container_width=True)
+
+    else:
+        st.error("TPC hesaplanamadı. Alan veya hacim değerlerini kontrol et.")
 
     st.info(
-        "Bu değer YOLO ile tespit edilen mikroskobik bakteri sayısına göre hesaplanan tahmini Breed TPC/mL sonucudur."
+        "Bu değer YOLO ile tespit edilen mikroskobik bakteri sayısına göre hesaplanan tahmini Breed TPC/mL sonucudur. "
+        "Klasik plak sayımıyla birebir aynı kabul edilmemelidir."
     )
+
+    if debug_modu:
+        st.subheader("Tüm tespit edilen sınıf isimleri")
+        st.write(tum_tespit_edilen_siniflar)
 
     # --------------------------------------------------
     # CSV İNDİRME
@@ -310,7 +409,9 @@ if uploaded_files:
         ]
     )
 
-    csv = pd.concat([sonuc_df, ozet_df], axis=0).to_csv(index=False).encode("utf-8-sig")
+    csv_df = pd.concat([sonuc_df, ozet_df], axis=0)
+
+    csv = csv_df.to_csv(index=False).encode("utf-8-sig")
 
     st.download_button(
         label="Sonuçları CSV olarak indir",
