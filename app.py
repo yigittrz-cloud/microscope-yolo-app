@@ -8,7 +8,7 @@ import numpy as np
 # SAYFA AYARI
 # --------------------------------------------------
 st.set_page_config(
-    page_title="TPC Hesaplama",
+    page_title="Breed TPC Hesaplama",
     layout="centered"
 )
 
@@ -26,13 +26,31 @@ def load_model():
 
 try:
     model = load_model()
-except Exception as e:
+except Exception:
     st.error("Model yüklenemedi. best.pt dosyasının app.py ile aynı klasörde olduğundan emin ol.")
     st.stop()
 
 
 # --------------------------------------------------
-# SINIF SAYMA FONKSİYONU
+# GÖRÜNTÜ OKUMA
+# --------------------------------------------------
+def resmi_oku(uploaded_file):
+    image = Image.open(uploaded_file)
+
+    # TIFF çok sayfalıysa ilk sayfayı alır
+    try:
+        image.seek(0)
+    except Exception:
+        pass
+
+    image = image.convert("RGB")
+    image_np = np.array(image)
+
+    return image_np
+
+
+# --------------------------------------------------
+# SINIF SAYMA VE İŞARETLEME
 # --------------------------------------------------
 def say_ve_isaretle(image_np, conf_value):
     results = model(image_np, conf=conf_value)
@@ -84,7 +102,7 @@ def say_ve_isaretle(image_np, conf_value):
 
 
 # --------------------------------------------------
-# BREED HESAP FORMÜLÜ
+# BREED HESABI
 # --------------------------------------------------
 def breed_hesapla(
     ortalama_sayi,
@@ -179,7 +197,7 @@ seyreltme_carpani = seyreltme_carpani_bul(seyreltme_secimi)
 # --------------------------------------------------
 uploaded_files = st.file_uploader(
     "Mikroskop görüntülerini yükle",
-    type=["jpg", "jpeg", "png"],
+    type=["jpg", "jpeg", "png", "tif", "tiff"],
     accept_multiple_files=True
 )
 
@@ -199,8 +217,12 @@ if uploaded_files:
     with st.spinner("Görüntüler analiz ediliyor..."):
 
         for uploaded_file in uploaded_files:
-            image = Image.open(uploaded_file).convert("RGB")
-            image_np = np.array(image)
+
+            try:
+                image_np = resmi_oku(uploaded_file)
+            except Exception:
+                st.error(f"{uploaded_file.name} okunamadı.")
+                continue
 
             bakteri_sayisi, maya_kuf_sayisi, spor_sayisi, annotated_image = say_ve_isaretle(
                 image_np=image_np,
@@ -221,15 +243,15 @@ if uploaded_files:
                 }
             )
 
-    # --------------------------------------------------
-    # ORTALAMA SAYILAR
-    # --------------------------------------------------
-    ortalama_bakteri = toplam_bakteri / goruntu_sayisi
-    ortalama_maya_kuf = toplam_maya_kuf / goruntu_sayisi
+    if len(isaretli_gorseller) == 0:
+        st.error("Hiçbir görüntü analiz edilemedi.")
+        st.stop()
 
-    # --------------------------------------------------
-    # BREED SONUÇLARI
-    # --------------------------------------------------
+    analiz_edilen_goruntu_sayisi = len(isaretli_gorseller)
+
+    ortalama_bakteri = toplam_bakteri / analiz_edilen_goruntu_sayisi
+    ortalama_maya_kuf = toplam_maya_kuf / analiz_edilen_goruntu_sayisi
+
     bakteri_tpc = breed_hesapla(
         ortalama_sayi=ortalama_bakteri,
         tek_goruntu_alani_mm2=tek_goruntu_alani_mm2,
@@ -271,7 +293,7 @@ if uploaded_files:
             )
 
         with st.expander("Kısa özet"):
-            st.write(f"Görüntü sayısı: **{goruntu_sayisi}**")
+            st.write(f"Analiz edilen görüntü sayısı: **{analiz_edilen_goruntu_sayisi}**")
             st.write(f"Toplam bakteri sayısı: **{toplam_bakteri}**")
             st.write(f"Toplam maya-küf sayısı: **{toplam_maya_kuf}**")
             st.write(f"Toplam spor sayısı: **{toplam_spor}**")
