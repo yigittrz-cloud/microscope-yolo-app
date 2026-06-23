@@ -8,7 +8,7 @@ import numpy as np
 # SAYFA AYARI
 # --------------------------------------------------
 st.set_page_config(
-    page_title="Breed TPC Hesaplama",
+    page_title="TPC Hesaplama",
     page_icon="🧫",
     layout="centered"
 )
