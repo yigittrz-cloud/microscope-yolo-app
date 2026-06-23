@@ -12,8 +12,9 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("TPC Hesaplama")
-
+st.title("Breed TPC Hesaplama")
+st.write("APP VERSION: TIFF_BAKTERI_MAYA_KUF_5")
+st.write("Mikroskop görüntülerinden bakteri ve maya-küf sayımını ayrı hesaplar.")
 
 
 # --------------------------------------------------
@@ -29,6 +30,38 @@ try:
 except Exception:
     st.error("Model yüklenemedi. best.pt dosyasının app.py ile aynı klasörde olduğundan emin ol.")
     st.stop()
+
+
+# --------------------------------------------------
+# 10 ÜZERİ FORMAT
+# --------------------------------------------------
+def bilimsel_10_uzeri(sayi):
+    if sayi is None:
+        return "0"
+
+    if sayi == 0:
+        return "0"
+
+    us = int(np.floor(np.log10(abs(sayi))))
+    katsayi = sayi / (10 ** us)
+
+    ust_karakterler = {
+        "0": "⁰",
+        "1": "¹",
+        "2": "²",
+        "3": "³",
+        "4": "⁴",
+        "5": "⁵",
+        "6": "⁶",
+        "7": "⁷",
+        "8": "⁸",
+        "9": "⁹",
+        "-": "⁻"
+    }
+
+    us_yazi = "".join(ust_karakterler.get(char, char) for char in str(us))
+
+    return f"{katsayi:.2f} × 10{us_yazi}"
 
 
 # --------------------------------------------------
@@ -211,7 +244,6 @@ if uploaded_files:
     toplam_maya_kuf = 0
     toplam_spor = 0
 
-    goruntu_sayisi = len(uploaded_files)
     isaretli_gorseller = []
 
     with st.spinner("Görüntüler analiz ediliyor..."):
@@ -283,13 +315,13 @@ if uploaded_files:
         with col1:
             st.metric(
                 label="Bakteri TPC",
-                value=f"{bakteri_tpc:.2e} /mL"
+                value=f"{bilimsel_10_uzeri(bakteri_tpc)} /mL"
             )
 
         with col2:
             st.metric(
                 label="Maya-Küf",
-                value=f"{maya_kuf_tpc:.2e} /mL"
+                value=f"{bilimsel_10_uzeri(maya_kuf_tpc)} /mL"
             )
 
         with st.expander("Kısa özet"):
