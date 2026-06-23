@@ -12,7 +12,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Breed TPC Hesaplama")
+st.title("TPC Hesaplama")
 
 
 
