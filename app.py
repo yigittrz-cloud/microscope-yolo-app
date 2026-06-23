@@ -4,16 +4,22 @@ from PIL import Image
 import numpy as np
 
 
+# --------------------------------------------------
+# SAYFA AYARI
+# --------------------------------------------------
 st.set_page_config(
     page_title="Breed TPC Hesaplama",
-    st.write("APP VERSION: MAYA_KUF_2")
     layout="centered"
 )
 
 st.title("Breed TPC Hesaplama")
-st.write("Mikroskop görüntülerini yükle. Sistem bakteri ve maya-küf sayımını ayrı verir.")
+st.write("APP VERSION: BAKTERI_MAYA_KUF_3")
+st.write("Mikroskop görüntülerinden bakteri ve maya-küf sayımını ayrı hesaplar.")
 
 
+# --------------------------------------------------
+# MODEL YÜKLEME
+# --------------------------------------------------
 @st.cache_resource
 def load_model():
     return YOLO("best.pt")
@@ -21,17 +27,21 @@ def load_model():
 
 try:
     model = load_model()
-except Exception:
+except Exception as e:
     st.error("Model yüklenemedi. best.pt dosyasının app.py ile aynı klasörde olduğundan emin ol.")
     st.stop()
 
 
+# --------------------------------------------------
+# SINIF SAYMA FONKSİYONU
+# --------------------------------------------------
 def say_ve_isaretle(image_np, conf_value):
     results = model(image_np, conf=conf_value)
 
     bakteri_sayisi = 0
     maya_kuf_sayisi = 0
     spor_sayisi = 0
+
     annotated_image = image_np.copy()
 
     for result in results:
@@ -44,21 +54,39 @@ def say_ve_isaretle(image_np, conf_value):
             class_id = int(box.cls[0])
             class_name = model.names[class_id].lower().strip()
 
-            if "bakteri" in class_name:
+            # BAKTERİ
+            if (
+                "bakteri" in class_name
+                or "bacteria" in class_name
+                or "bacteri" in class_name
+            ):
                 bakteri_sayisi += 1
 
-            elif "maya" in class_name:
+            # MAYA-KÜF
+            elif (
+                "maya" in class_name
+                or "yeast" in class_name
+                or "küf" in class_name
+                or "kuf" in class_name
+                or "mold" in class_name
+                or "fungus" in class_name
+                or "fungi" in class_name
+            ):
                 maya_kuf_sayisi += 1
 
-            elif "küf" in class_name or "kuf" in class_name or "fungus" in class_name:
-                maya_kuf_sayisi += 1
-
-            elif "spor" in class_name:
+            # SPOR
+            elif (
+                "spor" in class_name
+                or "spore" in class_name
+            ):
                 spor_sayisi += 1
 
     return bakteri_sayisi, maya_kuf_sayisi, spor_sayisi, annotated_image
 
 
+# --------------------------------------------------
+# BREED HESAP FORMÜLÜ
+# --------------------------------------------------
 def breed_hesapla(
     ortalama_sayi,
     tek_goruntu_alani_mm2,
@@ -72,6 +100,7 @@ def breed_hesapla(
         * seyreltme_carpani
         / damlatilan_hacim_ml
     )
+
     return sonuc
 
 
@@ -94,6 +123,9 @@ def seyreltme_carpani_bul(seyreltme_secimi):
         return 1
 
 
+# --------------------------------------------------
+# AYARLAR
+# --------------------------------------------------
 with st.expander("Ayarlar"):
     conf_value = st.slider(
         "Confidence eşiği",
@@ -143,6 +175,9 @@ with st.expander("Ayarlar"):
 seyreltme_carpani = seyreltme_carpani_bul(seyreltme_secimi)
 
 
+# --------------------------------------------------
+# GÖRÜNTÜ YÜKLEME
+# --------------------------------------------------
 uploaded_files = st.file_uploader(
     "Mikroskop görüntülerini yükle",
     type=["jpg", "jpeg", "png"],
@@ -150,6 +185,9 @@ uploaded_files = st.file_uploader(
 )
 
 
+# --------------------------------------------------
+# ANALİZ
+# --------------------------------------------------
 if uploaded_files:
 
     toplam_bakteri = 0
@@ -157,7 +195,6 @@ if uploaded_files:
     toplam_spor = 0
 
     goruntu_sayisi = len(uploaded_files)
-
     isaretli_gorseller = []
 
     with st.spinner("Görüntüler analiz ediliyor..."):
@@ -179,15 +216,21 @@ if uploaded_files:
                 {
                     "dosya_adi": uploaded_file.name,
                     "isaretli": annotated_image,
-                    "bakteri_sayisi": bakteri_sayisi,
-                    "maya_kuf_sayisi": maya_kuf_sayisi,
-                    "spor_sayisi": spor_sayisi
+                    "bakteri": bakteri_sayisi,
+                    "maya_kuf": maya_kuf_sayisi,
+                    "spor": spor_sayisi
                 }
             )
 
+    # --------------------------------------------------
+    # ORTALAMA SAYILAR
+    # --------------------------------------------------
     ortalama_bakteri = toplam_bakteri / goruntu_sayisi
     ortalama_maya_kuf = toplam_maya_kuf / goruntu_sayisi
 
+    # --------------------------------------------------
+    # BREED SONUÇLARI
+    # --------------------------------------------------
     bakteri_tpc = breed_hesapla(
         ortalama_sayi=ortalama_bakteri,
         tek_goruntu_alani_mm2=tek_goruntu_alani_mm2,
@@ -208,21 +251,24 @@ if uploaded_files:
 
     tab1, tab2 = st.tabs(["Sonuç", "İşaretlemeler"])
 
+    # --------------------------------------------------
+    # SONUÇ SEKMESİ
+    # --------------------------------------------------
     with tab1:
-        st.subheader("Sayım Sonucu")
+        st.subheader("Analiz Sonucu")
 
         col1, col2 = st.columns(2)
 
         with col1:
             st.metric(
-                "Bakteri",
-                f"{bakteri_tpc:.2e} /mL"
+                label="Bakteri TPC",
+                value=f"{bakteri_tpc:.2e} /mL"
             )
 
         with col2:
             st.metric(
-                "Maya-Küf",
-                f"{maya_kuf_tpc:.2e} /mL"
+                label="Maya-Küf",
+                value=f"{maya_kuf_tpc:.2e} /mL"
             )
 
         with st.expander("Kısa özet"):
@@ -233,6 +279,9 @@ if uploaded_files:
             st.write(f"Ortalama bakteri/görüntü: **{ortalama_bakteri:.2f}**")
             st.write(f"Ortalama maya-küf/görüntü: **{ortalama_maya_kuf:.2f}**")
 
+    # --------------------------------------------------
+    # İŞARETLEMELER SEKMESİ
+    # --------------------------------------------------
     with tab2:
         for i, gorsel in enumerate(isaretli_gorseller, start=1):
             st.subheader(f"Görüntü {i}: {gorsel['dosya_adi']}")
@@ -240,9 +289,9 @@ if uploaded_files:
             st.image(
                 gorsel["isaretli"],
                 caption=(
-                    f"Bakteri: {gorsel['bakteri_sayisi']} | "
-                    f"Maya-Küf: {gorsel['maya_kuf_sayisi']} | "
-                    f"Spor: {gorsel['spor_sayisi']}"
+                    f"Bakteri: {gorsel['bakteri']} | "
+                    f"Maya-Küf: {gorsel['maya_kuf']} | "
+                    f"Spor: {gorsel['spor']}"
                 ),
                 use_container_width=True
             )
