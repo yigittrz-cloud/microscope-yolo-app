@@ -8,13 +8,12 @@ import numpy as np
 # SAYFA AYARI
 # --------------------------------------------------
 st.set_page_config(
-    page_title="Breed TPC Hesaplama",
+    page_title="TPC Hesaplama",
     layout="centered"
 )
 
 st.title("Breed TPC Hesaplama")
-st.write("APP VERSION: BAKTERI_MAYA_KUF_3")
-st.write("Mikroskop görüntülerinden bakteri ve maya-küf sayımını ayrı hesaplar.")
+
 
 
 # --------------------------------------------------
