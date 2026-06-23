@@ -6,6 +6,7 @@ import numpy as np
 
 st.set_page_config(
     page_title="Breed TPC Hesaplama",
+    st.write("APP VERSION: MAYA_KUF_2")
     layout="centered"
 )
 
