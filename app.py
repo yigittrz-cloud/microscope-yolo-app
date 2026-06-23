@@ -4,21 +4,15 @@ from PIL import Image
 import numpy as np
 
 
-# --------------------------------------------------
-# SAYFA AYARI
-# --------------------------------------------------
 st.set_page_config(
     page_title="Breed TPC Hesaplama",
     layout="centered"
 )
 
 st.title("Breed TPC Hesaplama")
-st.write("Mikroskop görüntülerini yükle. Sistem bakteri sayısını analiz edip tahmini TPC/mL sonucunu verir.")
+st.write("Mikroskop görüntülerini yükle. Sistem bakteri ve maya-küf sayımını ayrı verir.")
 
 
-# --------------------------------------------------
-# MODEL YÜKLEME
-# --------------------------------------------------
 @st.cache_resource
 def load_model():
     return YOLO("best.pt")
@@ -31,13 +25,12 @@ except Exception:
     st.stop()
 
 
-# --------------------------------------------------
-# FONKSİYONLAR
-# --------------------------------------------------
-def bakteri_say_ve_isaretle(image_np, conf_value):
+def say_ve_isaretle(image_np, conf_value):
     results = model(image_np, conf=conf_value)
 
     bakteri_sayisi = 0
+    maya_kuf_sayisi = 0
+    spor_sayisi = 0
     annotated_image = image_np.copy()
 
     for result in results:
@@ -53,23 +46,32 @@ def bakteri_say_ve_isaretle(image_np, conf_value):
             if "bakteri" in class_name:
                 bakteri_sayisi += 1
 
-    return bakteri_sayisi, annotated_image
+            elif "maya" in class_name:
+                maya_kuf_sayisi += 1
+
+            elif "küf" in class_name or "kuf" in class_name or "fungus" in class_name:
+                maya_kuf_sayisi += 1
+
+            elif "spor" in class_name:
+                spor_sayisi += 1
+
+    return bakteri_sayisi, maya_kuf_sayisi, spor_sayisi, annotated_image
 
 
-def breed_tpc_hesapla(
-    ortalama_bakteri,
+def breed_hesapla(
+    ortalama_sayi,
     tek_goruntu_alani_mm2,
     yayma_alani_mm2,
     damlatilan_hacim_ml,
     seyreltme_carpani
 ):
-    tpc_ml = (
-        ortalama_bakteri
+    sonuc = (
+        ortalama_sayi
         * (yayma_alani_mm2 / tek_goruntu_alani_mm2)
         * seyreltme_carpani
         / damlatilan_hacim_ml
     )
-    return tpc_ml
+    return sonuc
 
 
 def seyreltme_carpani_bul(seyreltme_secimi):
@@ -91,9 +93,6 @@ def seyreltme_carpani_bul(seyreltme_secimi):
         return 1
 
 
-# --------------------------------------------------
-# AYARLAR
-# --------------------------------------------------
 with st.expander("Ayarlar"):
     conf_value = st.slider(
         "Confidence eşiği",
@@ -143,9 +142,6 @@ with st.expander("Ayarlar"):
 seyreltme_carpani = seyreltme_carpani_bul(seyreltme_secimi)
 
 
-# --------------------------------------------------
-# FOTOĞRAF YÜKLEME
-# --------------------------------------------------
 uploaded_files = st.file_uploader(
     "Mikroskop görüntülerini yükle",
     type=["jpg", "jpeg", "png"],
@@ -153,42 +149,54 @@ uploaded_files = st.file_uploader(
 )
 
 
-# --------------------------------------------------
-# ANALİZ
-# --------------------------------------------------
 if uploaded_files:
 
     toplam_bakteri = 0
+    toplam_maya_kuf = 0
+    toplam_spor = 0
+
     goruntu_sayisi = len(uploaded_files)
+
     isaretli_gorseller = []
-    tekil_sayimlar = []
 
     with st.spinner("Görüntüler analiz ediliyor..."):
+
         for uploaded_file in uploaded_files:
             image = Image.open(uploaded_file).convert("RGB")
             image_np = np.array(image)
 
-            bakteri_sayisi, annotated_image = bakteri_say_ve_isaretle(
+            bakteri_sayisi, maya_kuf_sayisi, spor_sayisi, annotated_image = say_ve_isaretle(
                 image_np=image_np,
                 conf_value=conf_value
             )
 
             toplam_bakteri += bakteri_sayisi
-            tekil_sayimlar.append(bakteri_sayisi)
+            toplam_maya_kuf += maya_kuf_sayisi
+            toplam_spor += spor_sayisi
 
             isaretli_gorseller.append(
                 {
                     "dosya_adi": uploaded_file.name,
-                    "orijinal": image,
                     "isaretli": annotated_image,
-                    "bakteri_sayisi": bakteri_sayisi
+                    "bakteri_sayisi": bakteri_sayisi,
+                    "maya_kuf_sayisi": maya_kuf_sayisi,
+                    "spor_sayisi": spor_sayisi
                 }
             )
 
     ortalama_bakteri = toplam_bakteri / goruntu_sayisi
+    ortalama_maya_kuf = toplam_maya_kuf / goruntu_sayisi
 
-    tpc_sonuc = breed_tpc_hesapla(
-        ortalama_bakteri=ortalama_bakteri,
+    bakteri_tpc = breed_hesapla(
+        ortalama_sayi=ortalama_bakteri,
+        tek_goruntu_alani_mm2=tek_goruntu_alani_mm2,
+        yayma_alani_mm2=yayma_alani_mm2,
+        damlatilan_hacim_ml=damlatilan_hacim_ml,
+        seyreltme_carpani=seyreltme_carpani
+    )
+
+    maya_kuf_tpc = breed_hesapla(
+        ortalama_sayi=ortalama_maya_kuf,
         tek_goruntu_alani_mm2=tek_goruntu_alani_mm2,
         yayma_alani_mm2=yayma_alani_mm2,
         damlatilan_hacim_ml=damlatilan_hacim_ml,
@@ -200,26 +208,44 @@ if uploaded_files:
     tab1, tab2 = st.tabs(["Sonuç", "İşaretlemeler"])
 
     with tab1:
-        st.metric(
-            label="Tahmini Breed TPC",
-            value=f"{tpc_sonuc:.2e} TPC/mL"
-        )
+        st.subheader("Sayım Sonucu")
 
-        st.write(f"Yaklaşık sonuç: **{tpc_sonuc:,.0f} TPC/mL**")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric(
+                "Bakteri",
+                f"{bakteri_tpc:.2e} /mL"
+            )
+
+        with col2:
+            st.metric(
+                "Maya-Küf",
+                f"{maya_kuf_tpc:.2e} /mL"
+            )
 
         with st.expander("Kısa özet"):
-            st.write(f"Yüklenen görüntü sayısı: **{goruntu_sayisi}**")
+            st.write(f"Görüntü sayısı: **{goruntu_sayisi}**")
             st.write(f"Toplam bakteri sayısı: **{toplam_bakteri}**")
+            st.write(f"Toplam maya-küf sayısı: **{toplam_maya_kuf}**")
+            st.write(f"Toplam spor sayısı: **{toplam_spor}**")
             st.write(f"Ortalama bakteri/görüntü: **{ortalama_bakteri:.2f}**")
+            st.write(f"Ortalama maya-küf/görüntü: **{ortalama_maya_kuf:.2f}**")
 
     with tab2:
         for i, gorsel in enumerate(isaretli_gorseller, start=1):
             st.subheader(f"Görüntü {i}: {gorsel['dosya_adi']}")
+
             st.image(
                 gorsel["isaretli"],
-                caption=f"Bakteri sayısı: {gorsel['bakteri_sayisi']}",
+                caption=(
+                    f"Bakteri: {gorsel['bakteri_sayisi']} | "
+                    f"Maya-Küf: {gorsel['maya_kuf_sayisi']} | "
+                    f"Spor: {gorsel['spor_sayisi']}"
+                ),
                 use_container_width=True
             )
+
             st.divider()
 
 else:
