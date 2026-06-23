@@ -12,9 +12,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Breed TPC Hesaplama")
-st.write("APP VERSION: TIFF_BAKTERI_MAYA_KUF_5")
-st.write("Mikroskop görüntülerinden bakteri ve maya-küf sayımını ayrı hesaplar.")
+st.title("TPC Hesaplama")
+
 
 
 # --------------------------------------------------
