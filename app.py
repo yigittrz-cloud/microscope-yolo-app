@@ -103,7 +103,7 @@ st.markdown(
 st.markdown(
     """
     <div class="hero-card">
-        <div class="hero-title">🧫 Breed TPC Analiz Paneli</div>
+        <div class="hero-title">🧫  TPC Analiz Paneli</div>
     </div>
     """,
     unsafe_allow_html=True
